@@ -8,20 +8,20 @@ export default class LevelSelector extends UICorePlugin {
 
   static get version() { return VERSION }
 
-  get name() { return 'level_selector' }
+  get name() { return 'audio_selector' }
   get template() { return template(pluginHtml) }
 
   get attributes() {
     return {
       'class': this.name,
-      'data-level-selector': ''
+      'data-audio-selector': ''
     }
   }
 
   get events() {
     return {
-      'click [data-level-selector-select]': 'onLevelSelect',
-      'click [data-level-selector-button]': 'onShowLevelSelectMenu'
+      'click [data-audio-selector-select]': 'onTrackSelect',
+      'click [data-audio-selector-button]': 'onButtonClick'
     }
   }
 
@@ -29,7 +29,7 @@ export default class LevelSelector extends UICorePlugin {
     this.listenTo(this.core, Events.CORE_READY, this.bindPlaybackEvents)
     this.listenTo(this.core.mediaControl, Events.MEDIACONTROL_CONTAINERCHANGED, this.reload)
     this.listenTo(this.core.mediaControl, Events.MEDIACONTROL_RENDERED, this.render)
-    this.listenTo(this.core.mediaControl, Events.MEDIACONTROL_HIDE, this.hideSelectLevelMenu)
+    this.listenTo(this.core.mediaControl, Events.MEDIACONTROL_HIDE, this.hideContextMenu)
   }
 
   unBindEvents() {
@@ -44,15 +44,8 @@ export default class LevelSelector extends UICorePlugin {
   }
 
   bindPlaybackEvents() {
-      var currentPlayback = this.core.getCurrentPlayback()
-
-      this.listenTo(currentPlayback, Events.PLAYBACK_LEVELS_AVAILABLE, this.fillLevels)
-      this.listenTo(currentPlayback, Events.PLAYBACK_LEVEL_SWITCH_START, this.startLevelSwitch)
-      this.listenTo(currentPlayback, Events.PLAYBACK_LEVEL_SWITCH_END, this.stopLevelSwitch)
-      this.listenTo(currentPlayback, Events.PLAYBACK_BITRATE, this.updateCurrentLevel)
-
-      var playbackLevelsAvaialbeWasTriggered = currentPlayback.levels && currentPlayback.levels.length > 0
-      playbackLevelsAvaialbeWasTriggered && this.fillLevels(currentPlayback.levels)
+    var currentPlayback = this.core.getCurrentPlayback()
+    this.listenTo(currentPlayback, Events.PLAYBACK_PLAY, this.onPlay)
   }
 
   reload() {
@@ -67,112 +60,75 @@ export default class LevelSelector extends UICorePlugin {
     var currentPlayback = this.core.getCurrentPlayback()
     if (!currentPlayback) return false
 
-    var respondsToCurrentLevel = currentPlayback.currentLevel !== undefined
-    // Only care if we have at least 2 to choose from
-    var hasLevels = !!(this.levels && this.levels.length > 1)
+    var hls = currentPlayback._hls
+    if (!hls) return false
 
-    return respondsToCurrentLevel && hasLevels
+    // Only care if we have at least 2 to choose from
+    var hasMultipleTracks = !!(this.tracks && this.tracks.length > 1)
+
+    return hasMultipleTracks
   }
 
   render() {
     if (this.shouldRender()) {
       var style = Styler.getStyleFor(pluginStyle, {baseUrl: this.core.options.baseUrl})
 
-      this.$el.html(this.template({'levels':this.levels, 'title': this.getTitle()}))
+      this.$el.html(this.template({'tracks':this.tracks, 'title': this.getTitle()}))
       this.$el.append(style)
       this.core.mediaControl.$('.media-control-right-panel').append(this.el)
-      this.highlightCurrentLevel()
+      this.highlightCurrentTrack()
     }
     return this
   }
 
-  fillLevels(levels, initialLevel = AUTO) {
-    if (this.selectedLevelId === undefined) this.selectedLevelId = initialLevel
-    this.levels = levels
-    this.configureLevelsLabels()
-    this.render()
+  onPlay() {
+    this.fillTracks();
+    this.render();
   }
 
-  configureLevelsLabels() {
-    if (this.core.options.levelSelectorConfig === undefined) return
-
-    var labelCallback = this.core.options.levelSelectorConfig.labelCallback
-    if(labelCallback && typeof labelCallback !== 'function')
-    {
-        throw new TypeError('labelCallback must be a function')
-    }
-    
-    var hasLabels = this.core.options.levelSelectorConfig.labels
-    var labels = hasLabels ? this.core.options.levelSelectorConfig.labels : {};
-    
-    if(labelCallback || hasLabels)
-    {
-        var level
-        var label
-        for(var levelId in this.levels) {
-            level = this.levels[levelId]
-            label = labels[level.id] 
-            if(labelCallback)
-            {
-                level.label = labelCallback(level,label)
-            }
-            else if(label)
-            {
-                level.label = label
-            }
-        }
+  fillTracks() {
+    var hls = this.core.getCurrentPlayback()._hls
+    if (hls) {
+      this.tracks = hls.audioTracks
+      this.current = hls.audioTrack
     }
   }
 
-  findLevelBy(id) {
-    var foundLevel
-    this.levels.forEach((level) => { if (level.id === id) {foundLevel = level} })
-    return foundLevel
-  }
+  onTrackSelect(event) {
+    var hls = this.core.getCurrentPlayback()._hls
+    if (!hls) return
 
-  onLevelSelect(event) {
-    this.selectedLevelId = parseInt(event.target.dataset.levelSelectorSelect, 10)
-    if (this.core.getCurrentPlayback().currentLevel == this.selectedLevelId) return false;
-    this.core.getCurrentPlayback().currentLevel = this.selectedLevelId
+    this.current = parseInt(event.target.dataset.audioSelectorSelect, 10)
+    hls.audioTrack = this.current
 
     this.toggleContextMenu()
+    this.highlightCurrentTrack()
 
     event.stopPropagation()
     return false
   }
 
-  onShowLevelSelectMenu(event) { this.toggleContextMenu() }
+  onButtonClick(event) { this.toggleContextMenu() }
 
-  hideSelectLevelMenu() { this.$('.level_selector ul').hide() }
+  hideContextMenu() { this.$('.audio_selector ul').hide() }
 
-  toggleContextMenu() { this.$('.level_selector ul').toggle() }
+  toggleContextMenu() { this.$('.audio_selector ul').toggle() }
 
-  buttonElement() { return this.$('.level_selector button') }
+  buttonElement() { return this.$('.audio_selector button') }
 
-  levelElement(id) { return this.$('.level_selector ul a'+(!isNaN(id) ? '[data-level-selector-select="'+id+'"]' : '')).parent() }
+  trackElement(id) { return this.$('.audio_selector ul a'+(!isNaN(id) ? '[data-audio-selector-select="'+id+'"]' : '')).parent() }
 
-  getTitle() { return (this.core.options.levelSelectorConfig || {}).title }
+  getTitle() { return (this.core.options.audioSelectorConfig || {}).title }
 
-  startLevelSwitch() { this.buttonElement().addClass('changing') }
-
-  stopLevelSwitch() { this.buttonElement().removeClass('changing') }
-
-  updateText(level) {
-    if (level === AUTO) {
-      this.buttonElement().text(this.currentLevel ? 'AUTO (' + this.currentLevel.label + ')' : 'AUTO')
-    }
-    else {
-      this.buttonElement().text(this.findLevelBy(level).label)
+  updateText() {
+    if (this.current != null && this.tracks[this.current]) {
+      this.buttonElement().text(this.tracks[this.current].name)
     }
   }
-  updateCurrentLevel(info) {
-    var level = this.findLevelBy(info.level)
-    this.currentLevel = level ? level : null
-    this.highlightCurrentLevel()
-  }
-  highlightCurrentLevel() {
-    this.levelElement().removeClass('current')
-    this.currentLevel && this.levelElement(this.currentLevel.id).addClass('current')
-    this.updateText(this.selectedLevelId)
+
+  highlightCurrentTrack() {
+    this.trackElement().removeClass('current')
+    this.current && this.trackElement(this.current).addClass('current')
+    this.updateText()
   }
 }

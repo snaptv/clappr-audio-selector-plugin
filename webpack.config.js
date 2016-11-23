@@ -1,6 +1,6 @@
 var path = require('path');
 var webpack = require('webpack');
-var filename = 'level-selector.js'
+var filename = 'audio-selector.js'
 
 module.exports = {
   entry: path.resolve(__dirname, 'index.js'),
@@ -45,7 +45,7 @@ module.exports = {
     path: path.resolve(__dirname, 'dist'),
     publicPath: '<%=baseUrl%>/',
     filename: filename,
-    library: 'LevelSelector',
+    library: 'AudioSelector',
     libraryTarget: 'umd',
   },
 };
